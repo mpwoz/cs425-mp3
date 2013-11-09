@@ -15,7 +15,6 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -150,26 +149,29 @@ func (self *Ring) FirstMember(portAddress string) {
 	newMember := data.NewGroupMember(key, portAddress, 0, Stable)
 	self.updateMember(newMember)
 }
-func (self *Ring) Insert(key, val string) {
 
-	ikey, _ := strconv.Atoi(key)
-	fmt.Println("Inserting Data")
+func (self *Ring) getMachineForKey(key int) locationStore {
+
+	//mt.Println("Finding Machine for key")
 	//Get first machine greater then key
 
-	storeMachine := self.UserKeyTable.FindGE(locationStore{ikey, ""})
+	storeMachine := self.UserKeyTable.FindGE(locationStore{key, ""})
 	if storeMachine == self.UserKeyTable.Limit() {
 		storeMachine = self.UserKeyTable.Min()
 	}
-	storeMachineValue := storeMachine.Item().(locationStore).value
+	storeMachineValue := storeMachine.Item().(locationStore)
+	return storeMachineValue
 
-	//Insert data into that machine
+}
+func (self *Ring) Insert(key int, val string) {
 
-	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachineValue].Address)
+	storeMachine := self.getMachineForKey(key)
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
 	var result int
-	sendData := data.NewDataStore(ikey, val)
+	sendData := data.NewDataStore(key, val)
 	sendDataPtr := &sendData
 	err = client.Call("Ring.SendData", sendDataPtr, &result)
 	if err != nil {
@@ -179,35 +181,64 @@ func (self *Ring) Insert(key, val string) {
 	if result != 1 {
 		fmt.Println("Error storing data")
 	}
-	fmt.Println(self.KeyValTable.Len())
+	fmt.Printf("Data Size: %d \n", self.KeyValTable.Len())
 }
 
-func (self *Ring) Update(key, val string) {
-}
+func (self *Ring) Update(key int, val string) {
 
-func (self *Ring) Remove(key string) {
-}
+	storeMachine := self.getMachineForKey(key)
 
-func (self *Ring) Lookup(key string) {
-
-	ikey, _ := strconv.Atoi(key)
-	fmt.Println("Inserting Data")
-	//Get first machine greater then equal to key
-
-	storeMachine := self.UserKeyTable.FindGE(locationStore{ikey, ""})
-	if storeMachine == self.UserKeyTable.Limit() {
-		storeMachine = self.UserKeyTable.Min()
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
+	if err != nil {
+		log.Fatal("dialing:", err)
 	}
-	storeMachineValue := storeMachine.Item().(locationStore).value
+	var result int
+	sendData := data.NewDataStore(key, val)
+	sendDataPtr := &sendData
+	err = client.Call("Ring.UpdateData", sendDataPtr, &result)
+	if err != nil {
+		fmt.Println("Error sending data")
+		return
+	}
+	if result != 1 {
+		fmt.Println("Error storing data")
+	}
+	fmt.Printf("Data Size: %d \n", self.KeyValTable.Len())
+}
+
+func (self *Ring) Remove(key int) {
+
+	storeMachine := self.getMachineForKey(key)
+
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	var result int
+
+	err = client.Call("Ring.RemoveData", &key, &result)
+	if err != nil {
+		fmt.Println("Error sending data")
+		return
+	}
+	if result != 1 {
+		fmt.Println("Error storing data")
+	}
+	fmt.Printf("Data Size: %d \n", self.KeyValTable.Len())
+}
+
+func (self *Ring) Lookup(key int) {
+
+	storeMachine := self.getMachineForKey(key)
 
 	//Get Data from that machine
 
-	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachineValue].Address)
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
 	var dataStore data.DataStore
-	err = client.Call("Ring.GetData", &ikey, &dataStore)
+	err = client.Call("Ring.GetData", &key, &dataStore)
 	if err != nil {
 		fmt.Println("Error sending data")
 		return
@@ -272,7 +303,6 @@ func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
 
 	*success = 0
 	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-	fmt.Println(inserted)
 	if inserted == true {
 		*success = 1
 	}
@@ -292,6 +322,32 @@ func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
 		fmt.Println("Data not found")
 	} else {
 		*responseData = foundData.(data.DataStore)
+	}
+	return nil
+
+}
+
+func (self *Ring) RemoveData(key *int, success *int) error {
+
+	*success = 0
+	deleted := self.KeyValTable.DeleteWithKey(data.DataStore{*key, ""})
+	if deleted == true {
+		*success = 1
+	}
+	fmt.Println()
+	return nil
+}
+
+func (self *Ring) UpdateData(sentData *data.DataStore, success *int) error {
+
+	// Delete the current data - we dont care if it doesnt exist as long as its added
+	self.KeyValTable.DeleteWithKey(data.DataStore{(*sentData).Key, ""})
+
+	// Add new data
+	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
+
+	if inserted == true {
+		*success = 1
 	}
 	return nil
 
@@ -493,7 +549,7 @@ func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember 
 	fmt.Printf("myKey : %d", myKey)
 	var response *data.GroupMember
 	err = client.Call("Ring.GetSuccessor", argi, &response)
-	fmt.Println(response)
+	//fmt.Println(response)
 	if response == nil {
 		fmt.Println("No successor : only member in group")
 	}

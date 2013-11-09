@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -59,9 +60,11 @@ func main() {
 		line := strings.TrimSpace(scanner.Text())
 		words := strings.Split(line, " ")
 		var key, val string
+		var ikey int
 
 		if len(words) > 1 {
 			key = words[1]
+			ikey, _ = strconv.Atoi(key)
 			if len(words) > 2 {
 				val = words[2]
 			}
@@ -69,13 +72,13 @@ func main() {
 
 		switch words[0] {
 		case "insert":
-			ring.Insert(key, val)
+			ring.Insert(ikey, val)
 		case "update":
-			ring.Update(key, val)
+			ring.Update(ikey, val)
 		case "remove":
-			ring.Remove(key)
+			ring.Remove(ikey)
 		case "lookup":
-			ring.Lookup(key)
+			ring.Lookup(ikey)
 		case "leave":
 			fmt.Println("Leaving Group")
 			ring.LeaveGroup()
