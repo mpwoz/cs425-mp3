@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 syntax:glob
 *.[568ao]
 *.ao
@@ -18,10 +17,5 @@ _test
 src/pkg/Make.deps
 _testmain.go
 
-syntax:regexp
-^pkg/
-^src/cmd/(.*)/6?\1$
-^.*/core.[0-9]*$
-=======
 myks
->>>>>>> 49c9de5f3119a84215021e241b96224d5d6704cd
+logs/*
