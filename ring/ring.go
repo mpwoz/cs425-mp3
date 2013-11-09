@@ -334,7 +334,6 @@ func (self *Ring) RemoveData(key *int, success *int) error {
 	if deleted == true {
 		*success = 1
 	}
-	fmt.Println()
 	return nil
 }
 
