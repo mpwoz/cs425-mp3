@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/rpc"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -147,7 +148,72 @@ func (self *Ring) FirstMember(portAddress string) {
 	newMember := data.NewGroupMember(key, portAddress, 0, Stable)
 	self.updateMember(newMember)
 }
+func (self *Ring) Insert(key, val string) {
 
+	ikey, _ := strconv.Atoi(key)
+	fmt.Println("Inserting Data")
+	//Get first machine greater then key
+
+	storeMachine := self.UserKeyTable.FindGE(locationStore{ikey, ""})
+	if storeMachine == self.UserKeyTable.Limit() {
+		storeMachine = self.UserKeyTable.Min()
+	}
+	storeMachineValue := storeMachine.Item().(locationStore).value
+
+	//Insert data into that machine
+
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachineValue].Address)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	var result int
+	sendData := data.NewDataStore(ikey, val)
+	sendDataPtr := &sendData
+	err = client.Call("Ring.SendData", sendDataPtr, &result)
+	if err != nil {
+		fmt.Println("Error sending data")
+		return
+	}
+	if result != 1 {
+		fmt.Println("Error storing data")
+	}
+	fmt.Println(self.KeyValTable.Len())
+}
+
+func (self *Ring) Update(key, val string) {
+}
+
+func (self *Ring) Remove(key string) {
+}
+
+func (self *Ring) Lookup(key string) {
+
+	ikey, _ := strconv.Atoi(key)
+	fmt.Println("Inserting Data")
+	//Get first machine greater then key
+
+	storeMachine := self.UserKeyTable.FindGE(locationStore{ikey, ""})
+	if storeMachine == self.UserKeyTable.Limit() {
+		storeMachine = self.UserKeyTable.Min()
+	}
+	storeMachineValue := storeMachine.Item().(locationStore).value
+
+	//Get Data from that machine
+
+	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachineValue].Address)
+	if err != nil {
+		log.Fatal("dialing:", err)
+	}
+	var dataStore data.DataStore
+	err = client.Call("Ring.SendData", &ikey, &dataStore)
+	if err != nil {
+		fmt.Println("Error sending data")
+		return
+	}
+	fmt.Println(dataStore.Key)
+	fmt.Println(dataStore.Value)
+
+}
 func (self *Ring) GetSuccessor(key *int, currSuccessorMember **data.GroupMember) error {
 
 	successorItem := self.UserKeyTable.FindGE(locationStore{*key, ""})
@@ -168,7 +234,7 @@ func (self *Ring) GetSuccessor(key *int, currSuccessorMember **data.GroupMember)
 	return nil
 }
 
-func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
+func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
 
 	mdata := &data.DataStore{
 		Key:   -1,
@@ -190,12 +256,30 @@ func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
 	return nil
 }
 
-func (self *Ring) SendData(sentData *data.DataStore, success *int) {
+func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
 
 	*success = 0
 	if self.KeyValTable.Insert(*sentData) {
 		*success = 1
 	}
+	return nil
+}
+
+func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
+
+	mdata := &data.DataStore{
+		Key:   -1,
+		Value: "",
+	}
+
+	*responseData = mdata
+	foundData := self.KeyValTable.Get(data.DataStore{*key, ""})
+	if (foundData) == nil {
+		fmt.Println("Data not found")
+	} else {
+		*responseData = foundData
+	}
+
 }
 
 func (self *Ring) Gossip() {
@@ -298,7 +382,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 	}
 	//Get smallest key less then key and initiate data transfer
 	var data_t data.DataStore
-	err = client.Call("Ring.GetData", argi, &data_t)
+	err = client.Call("Ring.GetEntryData", argi, &data_t)
 
 	fmt.Printf("Transferring Data Key: %d Value: %s", data_t.Key, data_t.Value)
 	for data_t.Key != -1 {
@@ -318,7 +402,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 		}
 
 		//Check if more data_t is available
-		err = client.Call("Ring.GetData", argi, &data_t)
+		err = client.Call("Ring.GetEntryData", argi, &data_t)
 		if err != nil {
 			fmt.Println("Error retrieving data")
 			return
@@ -349,7 +433,6 @@ func (self *Ring) LeaveGroup() {
 	}
 
 	NextLessThen := self.KeyValTable.FindLE(data.DataStore{key, ""})
-
 	for NextLessThen != self.KeyValTable.NegativeLimit() {
 
 		sendData := NextLessThen.Item().(data.DataStore)
@@ -370,6 +453,7 @@ func (self *Ring) LeaveGroup() {
 		}
 		NextLessThen = self.KeyValTable.FindLE(data.DataStore{sendData.Key, ""})
 	}
+	fmt.Println("I am done here")
 }
 
 func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember {
@@ -385,7 +469,7 @@ func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember 
 	fmt.Printf("myKey : %d", myKey)
 	var response *data.GroupMember
 	err = client.Call("Ring.GetSuccessor", argi, &response)
-	//fmt.Println(response.Id)
+	fmt.Println(response)
 	if response == nil {
 		fmt.Println("No successor : only member in group")
 	}

@@ -13,17 +13,6 @@ import (
 )
 
 // The operations
-func insert(key, val string) {
-}
-
-func update(key, val string) {
-}
-
-func remove(key string) {
-}
-
-func lookup(key string) {
-}
 
 func main() {
 
@@ -70,26 +59,30 @@ func main() {
 		line := strings.TrimSpace(scanner.Text())
 		words := strings.Split(line, " ")
 		var key, val string
-		key = words[1]
-		if len(words) > 2 {
-			val = words[2]
+
+		if len(words) > 1 {
+			key = words[1]
+			if len(words) > 2 {
+				val = words[2]
+			}
 		}
+
 		switch words[0] {
 		case "insert":
-			insert(key, val)
+			ring.Insert(key, val)
 		case "update":
-			update(key, val)
+			ring.Update(key, val)
 		case "remove":
-			remove(key)
+			ring.Remove(key)
 		case "lookup":
-			lookup(key)
+			ring.Lookup(key)
 		case "leave":
 			fmt.Println("Leaving Group")
 			ring.LeaveGroup()
+			goto Done
 		}
-
 	}
-
+Done:
 	if err := scanner.Err(); err != nil {
 		log.Panic("Scanning stdin", err)
 	}
