@@ -94,16 +94,18 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 	//fmt.Println(self.UserKeyTable)
 	member := self.Usertable[value.Address]
 	var lastKey int
+	lastKey = -1
 	if member != nil {
 		lastKey = self.Usertable[value.Address].Id
 	}
+	//fmt.Println(member)
 
 	//Delete member
 	if key == -1 && movement == Leaving {
 		fmt.Printf("Deleting member with ID %d", key)
 		delete(self.Usertable, value.Address)
 		//delete(self.UserKeyTable, lastKey)
-		self.UserKeyTable.DeleteWithKey(lastKey)
+		self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
 		return
 
 		//Add new member
@@ -128,7 +130,7 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 			if ((movement == Joining || member.Movement == Joining) && (key > lastKey)) ||
 				((movement == Leaving || member.Movement == Leaving) && (key < lastKey)) {
 
-				self.UserKeyTable.DeleteWithKey(lastKey)
+				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
 				self.UserKeyTable.Insert(locationStore{key, value.Address})
 			}
 		} else {
@@ -190,7 +192,7 @@ func (self *Ring) Lookup(key string) {
 
 	ikey, _ := strconv.Atoi(key)
 	fmt.Println("Inserting Data")
-	//Get first machine greater then key
+	//Get first machine greater then equal to key
 
 	storeMachine := self.UserKeyTable.FindGE(locationStore{ikey, ""})
 	if storeMachine == self.UserKeyTable.Limit() {
@@ -216,11 +218,22 @@ func (self *Ring) Lookup(key string) {
 }
 func (self *Ring) GetSuccessor(key *int, currSuccessorMember **data.GroupMember) error {
 
-	successorItem := self.UserKeyTable.FindGE(locationStore{*key, ""})
-	if successorItem == self.UserKeyTable.Limit() {
+	start := self.UserKeyTable.Min()
+	for i := 0; i < self.UserKeyTable.Len(); i++ {
+		value := start.Item().(locationStore).value
+		fmt.Println(self.Usertable[value])
+		start = start.Next()
+	}
+
+	successorItem := self.UserKeyTable.FindGE(locationStore{*key + 1, ""})
+	overFlow := self.UserKeyTable.Limit()
+	fmt.Println(successorItem)
+	if successorItem == overFlow {
+		fmt.Println("overflow")
 		successorItem = self.UserKeyTable.Min()
 	}
 	if successorItem != self.UserKeyTable.Limit() {
+		fmt.Println("IGetting")
 		item := successorItem.Item()
 		value := item.(locationStore).value
 		member := self.Usertable[value]
@@ -247,8 +260,7 @@ func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
 	min := self.KeyValTable.Min()
 
 	if min != False {
-		fmt.Println("******Should not happen")
-		if min.Item().(locationStore).key <= *key {
+		if min.Item().(data.DataStore).Key <= *key {
 			*responseData = min.Item().(data.DataStore)
 			self.KeyValTable.DeleteWithIterator(min)
 		}
@@ -259,7 +271,9 @@ func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
 func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
 
 	*success = 0
-	if self.KeyValTable.Insert(*sentData) {
+	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
+	fmt.Println(inserted)
+	if inserted == true {
 		*success = 1
 	}
 	return nil
@@ -285,7 +299,7 @@ func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
 
 func (self *Ring) Gossip() {
 	fmt.Println("Start Gossiping")
-	self.isGossiping = false
+	self.isGossiping = true
 	heartbeatInterval := 50 * time.Millisecond
 	userTableInterval := 2000 * time.Millisecond
 
@@ -352,6 +366,7 @@ func (self *Ring) handleGossip(senderAddr, subject string) {
 	if subjectMember == nil {
 		return
 	}
+	//fmt.Printf("Gossiped ID: %d", subjectMember.Id)
 
 	self.updateMember(subjectMember)
 	//fmt.Printf("My location Table Size: %d", self.UserKeyTable.Len())
@@ -381,6 +396,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+	fmt.Println(successor)
 	//Get smallest key less then key and initiate data transfer
 	var data_t data.DataStore
 	err = client.Call("Ring.GetEntryData", argi, &data_t)
@@ -389,7 +405,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 	for data_t.Key != -1 {
 
 		//Insert Key into my table
-		self.KeyValTable.Insert(locationStore{data_t.Key, data_t.Value})
+		self.KeyValTable.Insert(data.DataStore{data_t.Key, data_t.Value})
 
 		hostPort := net.JoinHostPort(self.Address, self.Port)
 
@@ -409,12 +425,15 @@ func (self *Ring) JoinGroup(address string) (err error) {
 			return
 		}
 	}
+
 	//Make hashed key my id
 	finalMember := data.NewGroupMember(hashedKey, hostPort, 0, Stable)
 	self.updateMember(finalMember)
 
+	fmt.Println("Am i done")
 	if self.isGossiping == false {
 		go self.Gossip()
+		fmt.Println("Am i done")
 	}
 	return
 }
@@ -425,14 +444,17 @@ func (self *Ring) LeaveGroup() {
 	//TODO: We have stored successor but he could change so lets find ask a random member
 	hostPort := net.JoinHostPort(self.Address, self.Port)
 	key := self.Usertable[hostPort].Id
+	fmt.Println(self.Usertable[hostPort].Id)
 	receiver := self.getRandomMember()
 	successor := self.callForSuccessor(key, receiver.Address)
+	fmt.Println(successor)
 
 	client, err := rpc.DialHTTP("tcp", successor.Address)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
 
+	fmt.Println(self.KeyValTable.Len())
 	NextLessThen := self.KeyValTable.FindLE(data.DataStore{key, ""})
 	for NextLessThen != self.KeyValTable.NegativeLimit() {
 
@@ -444,6 +466,7 @@ func (self *Ring) LeaveGroup() {
 			fmt.Println("Error sending data")
 			return
 		}
+		fmt.Println(result)
 		if result == 1 {
 			fmt.Println("Data Succesfully sent")
 			self.KeyValTable.DeleteWithIterator(NextLessThen)
