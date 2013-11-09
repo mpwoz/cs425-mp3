@@ -99,28 +99,15 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 	}
 	//fmt.Println(member)
 
-	//Delete member
-	if key == -1 && movement == Leaving {
-		fmt.Printf("Deleting member with ID %d", key)
-		delete(self.Usertable, value.Address)
-		//delete(self.UserKeyTable, lastKey)
-		self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
-		return
-
-		//Add new member
-	} else if member == nil {
-
-		//fmt.Println("Adding new member to group")
+	//Add new member
+	if member == nil {
 		self.Usertable[value.Address] = value
-		//if self.UserKeyTable[key] == "" {
 		if self.UserKeyTable.Get(locationStore{key, ""}) == nil {
 			self.UserKeyTable.Insert(locationStore{key, value.Address})
 
 		} else {
 			fmt.Println("ERROR: Two members with same key")
 		}
-		//fmt.Println(self.Usertable)
-		//fmt.Println(self.UserKeyTable)
 		return
 		//Change current member key to new one
 	} else {
@@ -129,7 +116,9 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 			if ((movement == Joining || member.Movement == Joining) && (key > lastKey)) ||
 				((movement == Leaving || member.Movement == Leaving) && (key < lastKey)) {
 
+				fmt.Printf("Deleting member with ID %d FROM %s", lastKey, value.Address)
 				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
+				fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
 				self.UserKeyTable.Insert(locationStore{key, value.Address})
 			}
 		} else {
@@ -166,10 +155,13 @@ func (self *Ring) getMachineForKey(key int) locationStore {
 func (self *Ring) Insert(key int, val string) {
 
 	storeMachine := self.getMachineForKey(key)
+	fmt.Println(self.Usertable[storeMachine.value].Address)
+
 	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
+
 	var result int
 	sendData := data.NewDataStore(key, val)
 	sendDataPtr := &sendData
@@ -532,6 +524,10 @@ func (self *Ring) LeaveGroup() {
 		}
 		NextLessThen = self.KeyValTable.FindLE(data.DataStore{sendData.Key, ""})
 	}
+	self.updateMember(data.NewGroupMember(-1, hostPort, 0, Leaving))
+
+	//One Last Gossip to make sure someone knows I have left
+	self.doUserTableGossip()
 	fmt.Println("I am done here")
 }
 
@@ -609,6 +605,7 @@ func (self *Ring) getRandomMember() *data.GroupMember {
 }
 func (self *Ring) doGossip(subject, receiver *data.GroupMember) (err error) {
 	// The message we are sending over UDP, subject can be nil
+	//fmt.Println(subject.Id)
 	msg := "GOSSIP|%|" + data.Marshal(subject)
 	return self.sendMessageWithPort(msg, receiver.Address)
 }
