@@ -205,7 +205,7 @@ func (self *Ring) Lookup(key string) {
 		log.Fatal("dialing:", err)
 	}
 	var dataStore data.DataStore
-	err = client.Call("Ring.SendData", &ikey, &dataStore)
+	err = client.Call("Ring.GetData", &ikey, &dataStore)
 	if err != nil {
 		fmt.Println("Error sending data")
 		return
@@ -272,13 +272,14 @@ func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
 		Value: "",
 	}
 
-	*responseData = mdata
+	*responseData = *mdata
 	foundData := self.KeyValTable.Get(data.DataStore{*key, ""})
 	if (foundData) == nil {
 		fmt.Println("Data not found")
 	} else {
-		*responseData = foundData
+		*responseData = foundData.(data.DataStore)
 	}
+	return nil
 
 }
 
