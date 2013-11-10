@@ -13,7 +13,6 @@ import (
 	"log"
 	"math/rand"
 	"net"
-	"net/http"
 	"net/rpc"
 	"strings"
 	"time"
@@ -43,8 +42,12 @@ type Ring struct {
 	Successor    *data.GroupMember
 }
 
-func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 
+
+/* 
+Create a new machine that joins the ring and can query the others 
+*/
+func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 	log.Printf("Creating udp listener at %s\n", hostPort)
 	logger.Log("INFO", "Creating udp listener at"+hostPort)
 	connUDP, err := createUDPListener(hostPort)
@@ -79,79 +82,10 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 	log.Println("UDP listener created!")
 	logger.Log("INFO", "UDP listener Created")
 	return
-
 }
 
-func (self *Ring) updateMember(value *data.GroupMember) {
 
-	//	fmt.Println("Updating members")
-	key := value.Id
-	movement := value.Movement
-	//fmt.Println(movement)
-	//fmt.Println(value.Address)
-	//fmt.Println(self.Usertable)
-	//fmt.Println(self.UserKeyTable)
-	member := self.Usertable[value.Address]
-	var lastKey int
-	lastKey = -1
-	if member != nil {
-		lastKey = self.Usertable[value.Address].Id
-	}
-	//fmt.Println(member)
 
-	//Add new member
-	if member == nil {
-		self.Usertable[value.Address] = value
-		if self.UserKeyTable.Get(locationStore{key, ""}) == nil {
-			self.UserKeyTable.Insert(locationStore{key, value.Address})
-
-		} else {
-			fmt.Println("ERROR: Two members with same key")
-		}
-		return
-		//Change current member key to new one
-	} else {
-		if member.Movement >= movement {
-			self.Usertable[value.Address] = value
-			if ((movement == Joining || member.Movement == Joining) && (key > lastKey)) ||
-				((movement == Leaving || member.Movement == Leaving) && (key < lastKey)) {
-
-				fmt.Printf("Deleting member with ID %d FROM %s", lastKey, value.Address)
-				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
-				fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
-				self.UserKeyTable.Insert(locationStore{key, value.Address})
-			}
-		} else {
-			fmt.Println("You should not be able to join if you already exist or stay if you already started leaving")
-		}
-
-	}
-	//Handle change in heartbeat
-
-	return
-}
-
-func (self *Ring) FirstMember(portAddress string) {
-	key := data.Hasher(portAddress)
-	fmt.Println("Found")
-	fmt.Println(key)
-	newMember := data.NewGroupMember(key, portAddress, 0, Stable)
-	self.updateMember(newMember)
-}
-
-func (self *Ring) getMachineForKey(key int) locationStore {
-
-	//mt.Println("Finding Machine for key")
-	//Get first machine greater then key
-
-	storeMachine := self.UserKeyTable.FindGE(locationStore{key, ""})
-	if storeMachine == self.UserKeyTable.Limit() {
-		storeMachine = self.UserKeyTable.Min()
-	}
-	storeMachineValue := storeMachine.Item().(locationStore)
-	return storeMachineValue
-
-}
 func (self *Ring) Insert(key int, val string) {
 
 	storeMachine := self.getMachineForKey(key)
@@ -220,10 +154,7 @@ func (self *Ring) Remove(key int) {
 }
 
 func (self *Ring) Lookup(key int) {
-
 	storeMachine := self.getMachineForKey(key)
-
-	//Get Data from that machine
 
 	client, err := rpc.DialHTTP("tcp", self.Usertable[storeMachine.value].Address)
 	if err != nil {
@@ -235,39 +166,77 @@ func (self *Ring) Lookup(key int) {
 		fmt.Println("Error sending data")
 		return
 	}
-	fmt.Println(dataStore.Key)
-	fmt.Println(dataStore.Value)
-
+	log.Println(dataStore.Key, dataStore.Value)
 }
-func (self *Ring) GetSuccessor(key *int, currSuccessorMember **data.GroupMember) error {
 
-	start := self.UserKeyTable.Min()
-	for i := 0; i < self.UserKeyTable.Len(); i++ {
-		value := start.Item().(locationStore).value
-		fmt.Println(self.Usertable[value])
-		start = start.Next()
+
+
+
+
+
+func (self *Ring) updateMember(value *data.GroupMember) {
+	key := value.Id
+	movement := value.Movement
+	member := self.Usertable[value.Address]
+	var lastKey int
+	lastKey = -1
+	if member != nil {
+		lastKey = self.Usertable[value.Address].Id
 	}
 
-	successorItem := self.UserKeyTable.FindGE(locationStore{*key + 1, ""})
-	overFlow := self.UserKeyTable.Limit()
-	fmt.Println(successorItem)
-	if successorItem == overFlow {
-		fmt.Println("overflow")
-		successorItem = self.UserKeyTable.Min()
-	}
-	if successorItem != self.UserKeyTable.Limit() {
-		fmt.Println("IGetting")
-		item := successorItem.Item()
-		value := item.(locationStore).value
-		member := self.Usertable[value]
-		fmt.Println(member.Id)
-		*currSuccessorMember = member
-		//We can add code to update member key here as well? Or we can wait for it to be gossiped to us
+	//Add new member
+	if member == nil {
+		self.Usertable[value.Address] = value
+		if self.UserKeyTable.Get(locationStore{key, ""}) == nil {
+			self.UserKeyTable.Insert(locationStore{key, value.Address})
 
+		} else {
+			fmt.Println("ERROR: Two members with same key")
+		}
+		return
+		//Change current member key to new one
 	} else {
-		*currSuccessorMember = nil
+		if member.Movement >= movement {
+			self.Usertable[value.Address] = value
+			if ((movement == Joining || member.Movement == Joining) && (key > lastKey)) ||
+				((movement == Leaving || member.Movement == Leaving) && (key < lastKey)) {
+
+				fmt.Printf("Deleting member with ID %d FROM %s", lastKey, value.Address)
+				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
+				fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
+				self.UserKeyTable.Insert(locationStore{key, value.Address})
+			}
+		} else {
+			fmt.Println("You should not be able to join if you already exist or stay if you already started leaving")
+		}
+
 	}
-	return nil
+	return
+}
+
+
+
+
+func (self *Ring) FirstMember(portAddress string) {
+	key := data.Hasher(portAddress)
+	fmt.Println("Found")
+	fmt.Println(key)
+	newMember := data.NewGroupMember(key, portAddress, 0, Stable)
+	self.updateMember(newMember)
+}
+
+func (self *Ring) getMachineForKey(key int) locationStore {
+
+	//mt.Println("Finding Machine for key")
+	//Get first machine greater then key
+
+	storeMachine := self.UserKeyTable.FindGE(locationStore{key, ""})
+	if storeMachine == self.UserKeyTable.Limit() {
+		storeMachine = self.UserKeyTable.Min()
+	}
+	storeMachineValue := storeMachine.Item().(locationStore)
+	return storeMachineValue
+
 }
 
 func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
@@ -291,58 +260,7 @@ func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
 	return nil
 }
 
-func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
 
-	*success = 0
-	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-	if inserted == true {
-		*success = 1
-	}
-	return nil
-}
-
-func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
-
-	mdata := &data.DataStore{
-		Key:   -1,
-		Value: "",
-	}
-
-	*responseData = *mdata
-	foundData := self.KeyValTable.Get(data.DataStore{*key, ""})
-	if (foundData) == nil {
-		fmt.Println("Data not found")
-	} else {
-		*responseData = foundData.(data.DataStore)
-	}
-	return nil
-
-}
-
-func (self *Ring) RemoveData(key *int, success *int) error {
-
-	*success = 0
-	deleted := self.KeyValTable.DeleteWithKey(data.DataStore{*key, ""})
-	if deleted == true {
-		*success = 1
-	}
-	return nil
-}
-
-func (self *Ring) UpdateData(sentData *data.DataStore, success *int) error {
-
-	// Delete the current data - we dont care if it doesnt exist as long as its added
-	self.KeyValTable.DeleteWithKey(data.DataStore{(*sentData).Key, ""})
-
-	// Add new data
-	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-
-	if inserted == true {
-		*success = 1
-	}
-	return nil
-
-}
 
 func (self *Ring) Gossip() {
 	fmt.Println("Start Gossiping")
@@ -531,30 +449,31 @@ func (self *Ring) LeaveGroup() {
 	fmt.Println("I am done here")
 }
 
-func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember {
 
+
+
+func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember {
 	client, err := rpc.DialHTTP("tcp", address)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
 
-	//Get Successor
-
 	argi := &myKey
 	fmt.Printf("myKey : %d", myKey)
 	var response *data.GroupMember
 	err = client.Call("Ring.GetSuccessor", argi, &response)
-	//fmt.Println(response)
 	if response == nil {
 		fmt.Println("No successor : only member in group")
 	}
 	self.Successor = response
 	fmt.Println("Found Successor")
-	//You might as well add the successor to the table as well
 	self.updateMember(self.Successor)
 	return response
 
 }
+
+
+
 
 // Gossip members from current table to a random member
 func (self *Ring) doUserTableGossip() {
@@ -649,20 +568,3 @@ func createUDPListener(hostPort string) (conn *net.UDPConn, err error) {
 	return
 }
 
-func (self *Ring) createTCPListener(hostPort string) {
-
-	var tcpaddr *net.TCPAddr
-	tcpaddr, err := net.ResolveTCPAddr("tcp", hostPort)
-	if err != nil {
-		return
-	}
-	//arith := new(Arith)
-	rpc.Register(self)
-	rpc.HandleHTTP()
-
-	conn, err := net.ListenTCP("tcp", tcpaddr)
-	if err != nil {
-		log.Fatal("listen error:", err)
-	}
-	go http.Serve(conn, nil)
-}
