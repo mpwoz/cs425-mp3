@@ -34,8 +34,6 @@ func (self *Ring) createTCPListener(hostPort string) {
     They correspont to the Insert/Update/Remove/Lookup calls on the client
 */
 
-
-
 /* Insert */
 func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
 	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
@@ -52,40 +50,30 @@ func (self *Ring) RemoveData(key *int, success *int) error {
 
 /* Lookup */
 func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
-	mdata := &data.DataStore {
-		Key:   -1,
-		Value: "",
-	}
-
-	*responseData = *mdata
-	foundData := self.KeyValTable.Get(data.DataStore{*key, ""})
-	if (foundData) == nil {
+	found := self.KeyValTable.Get(data.DataStore{*key, ""})
+	if found == nil {
 		fmt.Println("Data not found")
+    *responseData = data.NilDataStore()
 	} else {
-		*responseData = foundData.(data.DataStore)
+		*responseData = found.(data.DataStore)
 	}
 	return nil
 }
 
-
+/* Update */
 func (self *Ring) UpdateData(sentData *data.DataStore, success *int) error {
-
-	// Delete the current data - we dont care if it doesnt exist as long as its added
+	// Delete the current data, then add the new
 	self.KeyValTable.DeleteWithKey(data.DataStore{(*sentData).Key, ""})
-
-	// Add new data
 	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-
-	if inserted == true {
-		*success = 1
-	}
+  *success = Btoi(inserted)
 	return nil
-
 }
 
 
 
-
+/*
+  Some other utility functions that may be called over RPC
+*/
 func (self *Ring) GetSuccessor(key *int, currSuccessorMember **data.GroupMember) error {
 
 	start := self.UserKeyTable.Min()

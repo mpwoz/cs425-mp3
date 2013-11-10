@@ -12,3 +12,7 @@ func NewDataStore(key int, value string) *DataStore {
 	store.Value = value
 	return store
 }
+
+func NilDataStore() DataStore {
+  return *NewDataStore(-1, "")
+}
