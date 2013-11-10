@@ -2,32 +2,8 @@ package ring
 
 import (
   "fmt"
-  "net"
-  "net/http"
-  "net/rpc"
-  "log"
   "../data"
 )
-
-
-
-func (self *Ring) createTCPListener(hostPort string) {
-
-	var tcpaddr *net.TCPAddr
-	tcpaddr, err := net.ResolveTCPAddr("tcp", hostPort)
-	if err != nil {
-		return
-	}
-	//arith := new(Arith)
-	rpc.Register(self)
-	rpc.HandleHTTP()
-
-	conn, err := net.ListenTCP("tcp", tcpaddr)
-	if err != nil {
-		log.Fatal("listen error:", err)
-	}
-	go http.Serve(conn, nil)
-}
 
 /*
     The following are the calls exposed over RPC and may be called from a remote machine

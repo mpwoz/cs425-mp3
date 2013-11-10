@@ -14,6 +14,7 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
+  "net/http"
 	"strings"
 	"time"
 )
@@ -76,13 +77,14 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 		Successor:    nil,
 	}
 
+	log.Printf("Creating tcp listener at %s\n", hostPort)
 	ring.createTCPListener(hostPort)
 	fmt.Print(ring.Usertable)
 
-	log.Println("UDP listener created!")
-	logger.Log("INFO", "UDP listener Created")
 	return
 }
+
+
 
 
 
@@ -226,17 +228,11 @@ func (self *Ring) FirstMember(portAddress string) {
 }
 
 func (self *Ring) getMachineForKey(key int) locationStore {
-
-	//mt.Println("Finding Machine for key")
-	//Get first machine greater then key
-
-	storeMachine := self.UserKeyTable.FindGE(locationStore{key, ""})
-	if storeMachine == self.UserKeyTable.Limit() {
-		storeMachine = self.UserKeyTable.Min()
+  successor := self.UserKeyTable.FindGE(locationStore{key, ""})
+	if successor == self.UserKeyTable.Limit() {
+		successor = self.UserKeyTable.Min()
 	}
-	storeMachineValue := storeMachine.Item().(locationStore)
-	return storeMachineValue
-
+	return successor.Item().(locationStore)
 }
 
 func (self *Ring) GetEntryData(key *int, responseData *data.DataStore) error {
@@ -568,3 +564,22 @@ func createUDPListener(hostPort string) (conn *net.UDPConn, err error) {
 	return
 }
 
+
+func (self *Ring) createTCPListener(hostPort string) {
+
+	var tcpaddr *net.TCPAddr
+	tcpaddr, err := net.ResolveTCPAddr("tcp", hostPort)
+	if err != nil {
+    log.Println("createTCPListener:", err)
+		return
+	}
+	//arith := new(Arith)
+	rpc.Register(self)
+	rpc.HandleHTTP()
+
+	conn, err := net.ListenTCP("tcp", tcpaddr)
+	if err != nil {
+		log.Fatal("listen error:", err)
+	}
+	go http.Serve(conn, nil)
+}
