@@ -23,7 +23,7 @@ func main() {
 		faultTolerance int
 	)
 
-	flag.StringVar(&listenPort, "listen", "4567", "port to bind for UDP listener")
+	flag.StringVar(&listenPort, "l", "4567", "port to bind for UDP listener")
 	flag.StringVar(&groupMember, "g", "", "address of an existing group member")
 	flag.IntVar(&faultTolerance, "f", 0, "Use fault tolerance")
 	flag.Parse()
