@@ -539,7 +539,6 @@ func (self *Ring) callForSuccessor(myKey int, address string) *data.GroupMember 
 	}
 
 	//Get Successor
-
 	argi := &myKey
 	fmt.Printf("myKey : %d", myKey)
 	var response *data.GroupMember
