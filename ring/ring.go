@@ -7,7 +7,7 @@ package ring
 
 import (
 	"../data"
-	"../github.com/yasushi-saito/rbtree"
+	"../rbtree"
 	"../logger"
 	"fmt"
 	"log"
