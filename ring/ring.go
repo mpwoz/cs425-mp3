@@ -193,8 +193,10 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 
 				fmt.Printf("Deleting member with ID %d FROM %s", lastKey, value.Address)
 				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
-				fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
-				self.UserKeyTable.Insert(locationStore{key, value.Address})
+				if key != -1 {
+					fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
+					self.UserKeyTable.Insert(locationStore{key, value.Address})
+				}
 			}
 		} else {
 			fmt.Println("You should not be able to join if you already exist or stay if you already started leaving")
