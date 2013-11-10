@@ -74,11 +74,10 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 		Successor:    nil,
 	}
 
+	log.Printf("Creating tcp listener at %s\n", hostPort)
 	ring.createTCPListener(hostPort)
 	fmt.Print(ring.Usertable)
 
-	log.Println("UDP listener created!")
-	logger.Log("INFO", "UDP listener Created")
 	return
 }
 
@@ -214,17 +213,11 @@ func (self *Ring) FirstMember(portAddress string) {
 }
 
 func (self *Ring) getMachineForKey(key int) locationStore {
-
-	//mt.Println("Finding Machine for key")
-	//Get first machine greater then key
-
-	storeMachine := self.UserKeyTable.FindGE(locationStore{key, ""})
-	if storeMachine == self.UserKeyTable.Limit() {
-		storeMachine = self.UserKeyTable.Min()
+	successor := self.UserKeyTable.FindGE(locationStore{key, ""})
+	if successor == self.UserKeyTable.Limit() {
+		successor = self.UserKeyTable.Min()
 	}
-	storeMachineValue := storeMachine.Item().(locationStore)
-	return storeMachineValue
-
+	return successor.Item().(locationStore)
 }
 
 func (self *Ring) Gossip() {
@@ -296,7 +289,7 @@ func (self *Ring) handleGossip(senderAddr, subject string) {
 	if subjectMember == nil {
 		return
 	}
-	fmt.Printf("Gossiped ID: %d", subjectMember.Id)
+	//fmt.Printf("Gossiped ID: %d", subjectMember.Id)
 
 	self.updateMember(subjectMember)
 	//fmt.Printf("My location Table Size: %d", self.UserKeyTable.Len())
