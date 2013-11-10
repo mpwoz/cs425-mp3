@@ -7,7 +7,7 @@ import (
 )
 
 type Logger struct {
- 	key ,value , filename string
+  key, value, filename string
 }
 
 func (logs *Logger) InitializeLogFileName(filename string){
