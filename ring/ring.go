@@ -18,12 +18,6 @@ import (
 	"time"
 )
 
-// Represents a location in the ring
-type locationStore struct {
-	key   int
-	value string
-}
-
 const (
 	Leaving = iota
 	Stable
@@ -59,7 +53,7 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 		return
 	}
 
-	userKeyVal := rbtree.NewTree(func(a, b rbtree.Item) int { return a.(locationStore).key - b.(locationStore).key })
+	userKeyVal := rbtree.NewTree(func(a, b rbtree.Item) int { return a.(data.LocationStore).Key - b.(data.LocationStore).Key })
 	keyVal := rbtree.NewTree(func(a, b rbtree.Item) int { return a.(data.DataStore).Key - b.(data.DataStore).Key })
 
 	ring = &Ring{
@@ -84,67 +78,83 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 
 /* Returns an RPC client to the key's successor in the ring, allowing us to call functions on it */
 func (self *Ring) dialSuccessor(key int) *rpc.Client {
-  successorId := self.UserKeyTable.FindGE(locationStore{key, ""})
-  if successorId == self.UserKeyTable.Limit() {
-    successorId = self.UserKeyTable.Min()
-  }
-  successorAddr := self.Usertable[successorId.Item().(locationStore).value].Address
+	successorId := self.UserKeyTable.FindGE(data.LocationStore{key, ""})
+	if successorId == self.UserKeyTable.Limit() {
+		successorId = self.UserKeyTable.Min()
+	}
+	successorAddr := self.Usertable[successorId.Item().(data.LocationStore).Value].Address
 	fmt.Println(successorAddr)
 
 	client, err := rpc.DialHTTP("tcp", successorAddr)
 	if err != nil {
 		log.Fatal("dialing:", err)
 	}
-  return client
+	return client
 }
 
 /* Format of all the RPC responses for consistency */
 type RpcResult struct {
-  Success int
-  Data data.DataStore
-  Member data.GroupMember
+	Success int
+	Data    data.DataStore
+	Member  *data.GroupMember
 }
 
 /* Make an RPC call to the key's successor machine, using the given args */
 func (self *Ring) callSuccessorRPC(key int, function string, args *data.DataStore) (result RpcResult) {
-  client := self.dialSuccessor(key)
+	client := self.dialSuccessor(key)
 	err := client.Call(function, args, &result)
 	if err != nil {
-    fmt.Println("Error sending data:", err)
+		fmt.Println("Error sending data:", err)
 		return
 	}
 	if result.Success != 1 {
-    fmt.Println("Error storing data")
+		fmt.Println("Error storing data")
 	}
 	fmt.Printf("Data Size: %d \n", self.KeyValTable.Len())
-  return result
+	return result
 }
 
 /* The actual Operations exposed over RPC */
 func (self *Ring) Insert(key int, val string) {
 	args := data.NewDataStore(key, val)
-  result := self.callSuccessorRPC(key, "Ring.SendData", args)
-  fmt.Println(result.Success)
+	result := self.callSuccessorRPC(key, "Ring.SendData", args)
+
+	//Found New Member
+	if result.Success != 1 && result.Member != nil {
+		self.updateMember(result.Member)
+		self.Insert(key, val)
+	}
 }
 
 func (self *Ring) Update(key int, val string) {
 	args := data.NewDataStore(key, val)
-  result := self.callSuccessorRPC(key, "Ring.UpdateData", args)
-  fmt.Println(result.Success)
+	result := self.callSuccessorRPC(key, "Ring.UpdateData", args)
+	if result.Success != 1 && result.Member != nil {
+		self.updateMember(result.Member)
+		self.Update(key, val)
+	}
 }
 
 func (self *Ring) Remove(key int) {
 	args := data.NewDataStore(key, "")
-  result := self.callSuccessorRPC(key, "Ring.RemoveData", args)
-  fmt.Println(result.Success)
+	result := self.callSuccessorRPC(key, "Ring.RemoveData", args)
+	if result.Success != 1 && result.Member != nil {
+		self.updateMember(result.Member)
+		self.Remove(key)
+	}
 }
 
 func (self *Ring) Lookup(key int) {
 	args := data.NewDataStore(key, "")
-  result := self.callSuccessorRPC(key, "Ring.GetData", args)
-  fmt.Println(result.Data.Key, result.Data.Value)
-}
+	result := self.callSuccessorRPC(key, "Ring.GetData", args)
+	if result.Success != 1 && result.Member != nil {
+		self.updateMember(result.Member)
+		self.Lookup(key)
+	} else {
+		fmt.Println(result.Data.Key, result.Data.Value)
+	}
 
+}
 
 func (self *Ring) updateMember(value *data.GroupMember) {
 	key := value.Id
@@ -159,8 +169,8 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 	//Add new member
 	if member == nil {
 		self.Usertable[value.Address] = value
-		if self.UserKeyTable.Get(locationStore{key, ""}) == nil {
-			self.UserKeyTable.Insert(locationStore{key, value.Address})
+		if self.UserKeyTable.Get(data.LocationStore{key, ""}) == nil {
+			self.UserKeyTable.Insert(data.LocationStore{key, value.Address})
 
 		} else {
 			fmt.Println("ERROR: Two members with same key")
@@ -174,10 +184,10 @@ func (self *Ring) updateMember(value *data.GroupMember) {
 				((movement == Leaving || member.Movement == Leaving) && (key < lastKey)) {
 
 				fmt.Printf("Deleting member with ID %d FROM %s", lastKey, value.Address)
-				self.UserKeyTable.DeleteWithKey(locationStore{lastKey, ""})
+				self.UserKeyTable.DeleteWithKey(data.LocationStore{lastKey, ""})
 				if key != -1 {
 					fmt.Printf("Inserting member with ID %d FROM %s", key, value.Address)
-					self.UserKeyTable.Insert(locationStore{key, value.Address})
+					self.UserKeyTable.Insert(data.LocationStore{key, value.Address})
 				}
 			}
 		} else {
@@ -196,12 +206,12 @@ func (self *Ring) FirstMember(portAddress string) {
 	self.updateMember(newMember)
 }
 
-func (self *Ring) getMachineForKey(key int) locationStore {
-	successor := self.UserKeyTable.FindGE(locationStore{key, ""})
+func (self *Ring) getMachineForKey(key int) data.LocationStore {
+	successor := self.UserKeyTable.FindGE(data.LocationStore{key, ""})
 	if successor == self.UserKeyTable.Limit() {
 		successor = self.UserKeyTable.Min()
 	}
-	return successor.Item().(locationStore)
+	return successor.Item().(data.LocationStore)
 }
 
 func (self *Ring) Gossip() {
@@ -271,10 +281,6 @@ func (self *Ring) handleGossip(senderAddr, subject string) {
 	}
 
 	self.updateMember(subjectMember)
-	start := self.UserKeyTable.Min()
-	for i := 0; i < self.UserKeyTable.Len(); i++ {
-		start = start.Next()
-	}
 }
 
 //Join the group by finding successor and getting all the required data from it
@@ -290,7 +296,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 	hashedKey := data.Hasher(hostPort)
 
 	successor := self.callForSuccessor(hashedKey, address)
-	argi := &hashedKey
+	argi := data.NewLocationStore(hashedKey, hostPort)
 	client, err = rpc.DialHTTP("tcp", successor.Address)
 	if err != nil {
 		log.Fatal("dialing:", err)
@@ -360,9 +366,9 @@ func (self *Ring) LeaveGroup() {
 		sendData := NextLessThen.Item().(data.DataStore)
 		sendDataPtr := &sendData
 		var result RpcResult
-		err = client.Call("Ring.SendData", sendDataPtr, &result)
+		err = client.Call("Ring.SendLeaveData", sendDataPtr, &result)
 		if err != nil {
-			fmt.Println("Error sending data")
+			fmt.Println("Error sending data", err)
 			return
 		}
 		fmt.Println(result)
@@ -371,7 +377,7 @@ func (self *Ring) LeaveGroup() {
 			self.KeyValTable.DeleteWithIterator(NextLessThen)
 			self.updateMember(data.NewGroupMember(sendData.Key, hostPort, 0, Leaving))
 		} else {
-			fmt.Println("Error sending data")
+			fmt.Println("Error sending data", err)
 			break
 		}
 		NextLessThen = self.KeyValTable.FindLE(data.DataStore{sendData.Key, ""})
@@ -444,7 +450,7 @@ func (self *Ring) getRandomMember() *data.GroupMember {
 		start = start.Next()
 	}
 	if receiverAddrItem != nil {
-		receiverAddress := receiverAddrItem.(locationStore).value
+		receiverAddress := receiverAddrItem.(data.LocationStore).Value
 		receiver = self.Usertable[receiverAddress]
 	} else {
 		fmt.Println("You are doomed")
@@ -479,6 +485,27 @@ func sendMessage(message, address string) (err error) {
 	}
 
 	return
+}
+
+func (self *Ring) PrintMembers() {
+
+	fmt.Println("Printiing Members")
+	start := self.UserKeyTable.Min()
+	for i := 0; i < self.UserKeyTable.Len(); i++ {
+		fmt.Println(start.Item().(data.LocationStore))
+		start = start.Next()
+	}
+
+}
+
+func (self *Ring) PrintData() {
+
+	fmt.Println("Printing Data")
+	start := self.KeyValTable.Min()
+	for i := 0; i < self.KeyValTable.Len(); i++ {
+		fmt.Println(start.Item().(data.DataStore))
+		start = start.Next()
+	}
 }
 
 func createUDPListener(hostPort string) (conn *net.UDPConn, err error) {

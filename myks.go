@@ -11,7 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
-  "time"
+	"time"
 )
 
 // The operations
@@ -39,13 +39,14 @@ func main() {
 	//Add itself to the usertable - join
 	ring, err := ring.NewMember(hostPort, faultTolerance)
 
+	go ring.Gossip()
+
 	firstInGroup := groupMember == ""
 	if !firstInGroup {
 		ring.JoinGroup(groupMember)
 		logger.Log("JOIN", "Gossiping new member to the group")
 	} else {
 		ring.FirstMember(hostPort)
-		go ring.Gossip()
 	}
 
 	//UDP
@@ -79,14 +80,17 @@ func main() {
 		case "remove":
 			ring.Remove(ikey)
 		case "lookup":
-      start := time.Now()
+			start := time.Now()
 			ring.Lookup(ikey)
-      elapsed := time.Now().Sub(start)
-      fmt.Println("ELAPSED TIME:", elapsed)
+			elapsed := time.Now().Sub(start)
+			fmt.Println("ELAPSED TIME:", elapsed)
 		case "leave":
 			fmt.Println("Leaving Group")
 			ring.LeaveGroup()
 			goto Done
+		case "show":
+			ring.PrintMembers()
+			ring.PrintData()
 		}
 	}
 Done:
