@@ -82,6 +82,7 @@ func NewMember(hostPort string, faultTolerance int) (ring *Ring, err error) {
 	return
 }
 
+
 /* Returns an RPC client to the key's successor in the ring, allowing us to call functions on it */
 func (self *Ring) dialSuccessor(key int) *rpc.Client {
   successorId := self.UserKeyTable.FindGE(locationStore{key, ""})
@@ -108,6 +109,7 @@ type RpcResult struct {
 /* Make an RPC call to the key's successor machine, using the given args */
 func (self *Ring) callSuccessorRPC(key int, function string, args *data.DataStore) (result RpcResult) {
   client := self.dialSuccessor(key)
+  defer client.Close()
 	err := client.Call(function, args, &result)
 	if err != nil {
     fmt.Println("Error sending data:", err)
@@ -287,7 +289,7 @@ func (self *Ring) JoinGroup(address string) (err error) {
 
 	//Get Successor
 	hostPort := net.JoinHostPort(self.Address, self.Port)
-	hashedKey := data.Hasher(hostPort)
+	hashedKey := data.Hasher(hostPort + time.Now().String()) // TODO this is a hack
 
 	successor := self.callForSuccessor(hashedKey, address)
 	argi := &hashedKey
