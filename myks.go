@@ -60,7 +60,7 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		words := strings.Split(line, " ")
+		words := strings.SplitN(line, " ", 3)
 		var key, val string
 		var ikey int
 
