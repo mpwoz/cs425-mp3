@@ -21,13 +21,15 @@ func Hasher(s string) (value int) {
 		}
 	}
 
-	c = s[intLength*4 : len(s)-1]
-	mult = 1
+  if len(s) % 4 != 0 {
+    c = s[intLength*4 : ]
+    mult = 1
 
-	for k := 0; k < len(c); k++ {
-		sum += int(c[k]) * int(mult)
-		mult *= 256
-	}
+    for k := 0; k < len(c); k++ {
+      sum += int(c[k]) * int(mult)
+      mult *= 256
+    }
+  }
 
 	return (int)(math.Abs(float64(sum % 1000000)))
 }
