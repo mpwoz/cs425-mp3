@@ -10,13 +10,11 @@ import (
 )
 
 func (self *Ring) createTCPListener(hostPort string) {
-
 	var tcpaddr *net.TCPAddr
 	tcpaddr, err := net.ResolveTCPAddr("tcp", hostPort)
 	if err != nil {
 		return
 	}
-	//arith := new(Arith)
 	rpc.Register(self)
 	rpc.HandleHTTP()
 
@@ -27,43 +25,44 @@ func (self *Ring) createTCPListener(hostPort string) {
 	go http.Serve(conn, nil)
 }
 
+
 /*
    The following are the calls exposed over RPC and may be called from a remote machine
    They correspont to the Insert/Update/Remove/Lookup calls on the client
 */
 
 /* Insert */
-func (self *Ring) SendData(sentData *data.DataStore, success *int) error {
+func (self *Ring) SendData(sentData *data.DataStore, response *RpcResult) error {
 	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-	*success = Btoi(inserted)
+	response.Success = Btoi(inserted)
 	return nil
 }
 
 /* Remove */
-func (self *Ring) RemoveData(key *int, success *int) error {
-	deleted := self.KeyValTable.DeleteWithKey(data.DataStore{*key, ""})
-	*success = Btoi(deleted)
+func (self *Ring) RemoveData(args *data.DataStore, response *RpcResult) error {
+	deleted := self.KeyValTable.DeleteWithKey(data.DataStore{(*args).Key, ""})
+	response.Success = Btoi(deleted)
 	return nil
 }
 
 /* Lookup */
-func (self *Ring) GetData(key *int, responseData *data.DataStore) error {
-	found := self.KeyValTable.Get(data.DataStore{*key, ""})
+func (self *Ring) GetData(args *data.DataStore, response *RpcResult) error {
+	found := self.KeyValTable.Get(data.DataStore{(*args).Key, ""})
 	if found == nil {
 		fmt.Println("Data not found")
-		*responseData = data.NilDataStore()
+		response.Success = 0
 	} else {
-		*responseData = found.(data.DataStore)
+    response.Success = 1
+		response.Data = found.(data.DataStore)
 	}
 	return nil
 }
 
-/* Update */
-func (self *Ring) UpdateData(sentData *data.DataStore, success *int) error {
-	// Delete the current data, then add the new
+/* Update : Delete the current data, then add the new */
+func (self *Ring) UpdateData(sentData *data.DataStore, response *RpcResult) error {
 	self.KeyValTable.DeleteWithKey(data.DataStore{(*sentData).Key, ""})
 	inserted := self.KeyValTable.Insert(data.DataStore{(*sentData).Key, (*sentData).Value})
-	*success = Btoi(inserted)
+	response.Success = Btoi(inserted)
 	return nil
 }
 
