@@ -11,6 +11,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+  "time"
 )
 
 // The operations
@@ -78,7 +79,10 @@ func main() {
 		case "remove":
 			ring.Remove(ikey)
 		case "lookup":
+      start := time.Now()
 			ring.Lookup(ikey)
+      elapsed := time.Now().Sub(start)
+      fmt.Println("ELAPSED TIME:", elapsed)
 		case "leave":
 			fmt.Println("Leaving Group")
 			ring.LeaveGroup()
